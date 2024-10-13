@@ -7,7 +7,8 @@
 #include <WiFi.h>
 
 // Replace with the MAC address of your receiver (central ESP32 module)
-uint8_t receiverAddress[] = {0x30, 0xAE, 0xA4, 0x28, 0x38, 0xD8}; // Fill in your receiver's MAC address module_02 : 30:AE:A4:28:3A:D4/MAC address module_01 :30:AE:A4:28:38:D8
+uint8_t receiverAddress[] = {0xE0, 0x5A, 0x1B, 0xA1, 0x6D, 0xE0}; 
+// Fill in your receiver's MAC address module_02 : 30:AE:A4:28:3A:D4 / MAC address module_01 :30:AE:A4:28:38:D8 / MAC Address Epa_esp: E0:5A:1B:A1:6D:E0
 
 MPU6050 mpu;
 
@@ -122,5 +123,5 @@ void loop() {
     Serial.println("Error sending data");
   }
 
-  delay(50); // Adjust delay as needed
+  delay(90); // Adjust delay as needed
 }
