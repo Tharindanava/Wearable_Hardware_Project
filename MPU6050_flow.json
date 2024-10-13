@@ -1,0 +1,1462 @@
+[
+    {
+        "id": "e0bfbcd2c2645a60",
+        "type": "tab",
+        "label": "Flow 1",
+        "disabled": false,
+        "info": "",
+        "env": []
+    },
+    {
+        "id": "6d9a35feb1e84e89",
+        "type": "function",
+        "z": "e0bfbcd2c2645a60",
+        "name": "file_name_gen",
+        "func": "// Get the current time and convert it to text\nvar now = new Date();\nvar yyyy = now.getFullYear();\nvar mm = now.getMonth() < 9 ? \"0\" + (now.getMonth() + 1) : (now.getMonth() + 1); // getMonth() is zero-based\nvar dd  = now.getDate() < 10 ? \"0\" + now.getDate() : now.getDate();\nvar hh = now.getHours() < 10 ? \"0\" + now.getHours() : now.getHours();\nvar mmm  = now.getMinutes() < 10 ? \"0\" + now.getMinutes() : now.getMinutes();\nvar ss  = now.getSeconds() < 10 ? \"0\" + now.getSeconds() : now.getSeconds();\n\n// Generate out file name pattern\nmsg.fname = \"sensor01_mqtt_data_\"+ yyyy + mm + dd + \".csv\";\n// Full filename with path for the file node later\nmsg.filename = \"C:\\\\Users\\\\acer\\\\Documents\\\\Accedemic_Folder_E19254\\\\Wearable_Hardwear_Project\\\\Sensor_Data\\\\\"+ msg.fname;\n\n// We save the current payload into a different place on the msg object\nmsg.filecontent = msg.payload;\n\n// We are passing the file name search pattern to fs node to tell us if the file exists or not\nmsg.payload = {\"pattern\":msg.fname};\n\nnode.status({fill:\"blue\",shape:\"ring\",text:msg.fname});\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 300,
+        "y": 160,
+        "wires": [
+            [
+                "5ab927d8855d76de"
+            ]
+        ]
+    },
+    {
+        "id": "30c35ee12cb1b3a7",
+        "type": "switch",
+        "z": "e0bfbcd2c2645a60",
+        "name": "",
+        "property": "$count(msg.payload)",
+        "propertyType": "jsonata",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "0",
+                "vt": "num"
+            },
+            {
+                "t": "else"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 2,
+        "x": 590,
+        "y": 160,
+        "wires": [
+            [
+                "9eec9458164c51e7"
+            ],
+            [
+                "b6f9d0b1392733aa"
+            ]
+        ]
+    },
+    {
+        "id": "6c27b2423704946d",
+        "type": "csv",
+        "z": "e0bfbcd2c2645a60",
+        "name": "",
+        "sep": ",",
+        "hdrin": "",
+        "hdrout": "all",
+        "multi": "one",
+        "ret": "\\r\\n",
+        "temp": "timestamp,acc_X,acc_Y,acc_Z,w,i,j,k,psi,theta,phi",
+        "skip": "0",
+        "strings": true,
+        "include_empty_strings": false,
+        "include_null_values": false,
+        "x": 970,
+        "y": 140,
+        "wires": [
+            [
+                "c0a146e627e8fc44"
+            ]
+        ]
+    },
+    {
+        "id": "c0a146e627e8fc44",
+        "type": "file",
+        "z": "e0bfbcd2c2645a60",
+        "name": "",
+        "filename": "filename",
+        "filenameType": "msg",
+        "appendNewline": false,
+        "createDir": true,
+        "overwriteFile": "false",
+        "encoding": "none",
+        "x": 1140,
+        "y": 140,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "05e993a1fcdc1924",
+        "type": "csv",
+        "z": "e0bfbcd2c2645a60",
+        "name": "",
+        "sep": ",",
+        "hdrin": "",
+        "hdrout": "none",
+        "multi": "one",
+        "ret": "\\r\\n",
+        "temp": "timestamp,acc_X,acc_Y,acc_Z,w,i,j,k,psi,theta,phi",
+        "skip": "0",
+        "strings": true,
+        "include_empty_strings": false,
+        "include_null_values": false,
+        "x": 970,
+        "y": 180,
+        "wires": [
+            [
+                "c0a146e627e8fc44"
+            ]
+        ]
+    },
+    {
+        "id": "9eec9458164c51e7",
+        "type": "change",
+        "z": "e0bfbcd2c2645a60",
+        "name": "Get file content",
+        "rules": [
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "filecontent",
+                "tot": "msg"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 790,
+        "y": 140,
+        "wires": [
+            [
+                "6c27b2423704946d"
+            ]
+        ]
+    },
+    {
+        "id": "b6f9d0b1392733aa",
+        "type": "change",
+        "z": "e0bfbcd2c2645a60",
+        "name": "Get file content",
+        "rules": [
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "filecontent",
+                "tot": "msg"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 790,
+        "y": 180,
+        "wires": [
+            [
+                "05e993a1fcdc1924"
+            ]
+        ]
+    },
+    {
+        "id": "12218dd563aadeda",
+        "type": "comment",
+        "z": "e0bfbcd2c2645a60",
+        "name": "Data logger",
+        "info": "",
+        "x": 150,
+        "y": 40,
+        "wires": []
+    },
+    {
+        "id": "5ab927d8855d76de",
+        "type": "fs-file-lister",
+        "z": "e0bfbcd2c2645a60",
+        "name": "",
+        "start": "C:\\\\Users\\\\acer\\\\Documents\\\\Accedemic_Folder_E19254\\\\Wearable_Hardwear_Project\\\\Sensor_Data\\\\",
+        "pattern": "*.*",
+        "folders": "*",
+        "hidden": true,
+        "lstype": "files",
+        "path": true,
+        "single": true,
+        "depth": 0,
+        "stat": false,
+        "showWarnings": true,
+        "x": 460,
+        "y": 160,
+        "wires": [
+            [
+                "30c35ee12cb1b3a7"
+            ]
+        ]
+    },
+    {
+        "id": "d557d1aaa1f7ae92",
+        "type": "exec",
+        "z": "e0bfbcd2c2645a60",
+        "command": "rclone copy \"C:\\Users\\acer\\Documents\\Accedemic_Folder_E19254\\Agrivoltic_project\\Test_data\\Sensor_Data\" Agrovoltic_Project:Agrovoltic_Project_Data/Sensor_Data",
+        "addpay": "",
+        "append": "",
+        "useSpawn": "false",
+        "timer": "",
+        "winHide": false,
+        "oldrc": false,
+        "name": "Upload to drive",
+        "x": 460,
+        "y": 900,
+        "wires": [
+            [],
+            [],
+            []
+        ]
+    },
+    {
+        "id": "4161a2e8af88a873",
+        "type": "inject",
+        "z": "e0bfbcd2c2645a60",
+        "name": "Srart",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": true,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "",
+        "payloadType": "date",
+        "x": 230,
+        "y": 920,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "cb99f5e294144ab0",
+        "type": "inject",
+        "z": "e0bfbcd2c2645a60",
+        "name": "",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "true",
+        "payloadType": "bool",
+        "x": 230,
+        "y": 880,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "0b62caec13a07f0e",
+        "type": "mqtt in",
+        "z": "e0bfbcd2c2645a60",
+        "name": "accelerometer",
+        "topic": "sensor/mpu6050_01",
+        "qos": "2",
+        "datatype": "auto-detect",
+        "broker": "9764ab2546e3a982",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 130,
+        "y": 160,
+        "wires": [
+            [
+                "6d9a35feb1e84e89"
+            ]
+        ]
+    },
+    {
+        "id": "49a2e16ed2f579c9",
+        "type": "debug",
+        "z": "e0bfbcd2c2645a60",
+        "name": "debug 1",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 320,
+        "y": 80,
+        "wires": []
+    },
+    {
+        "id": "83282add38787ce6",
+        "type": "function",
+        "z": "e0bfbcd2c2645a60",
+        "name": "file_name_gen",
+        "func": "// Get the current time and convert it to text\nvar now = new Date();\nvar yyyy = now.getFullYear();\nvar mm = now.getMonth() < 9 ? \"0\" + (now.getMonth() + 1) : (now.getMonth() + 1); // getMonth() is zero-based\nvar dd  = now.getDate() < 10 ? \"0\" + now.getDate() : now.getDate();\nvar hh = now.getHours() < 10 ? \"0\" + now.getHours() : now.getHours();\nvar mmm  = now.getMinutes() < 10 ? \"0\" + now.getMinutes() : now.getMinutes();\nvar ss  = now.getSeconds() < 10 ? \"0\" + now.getSeconds() : now.getSeconds();\n\n// Generate out file name pattern\nmsg.fname = \"sensor02_mqtt_data_\"+ yyyy + mm + dd + \".csv\";\n// Full filename with path for the file node later\nmsg.filename = \"C:\\\\Users\\\\acer\\\\Documents\\\\Accedemic_Folder_E19254\\\\Wearable_Hardwear_Project\\\\Sensor_Data\\\\\" + msg.fname;\n\n// We save the current payload into a different place on the msg object\nmsg.filecontent = msg.payload;\n\n// We are passing the file name search pattern to fs node to tell us if the file exists or not\nmsg.payload = {\"pattern\":msg.fname};\n\nnode.status({fill:\"blue\",shape:\"ring\",text:msg.fname});\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 300,
+        "y": 320,
+        "wires": [
+            [
+                "199ee33efb79cb35"
+            ]
+        ]
+    },
+    {
+        "id": "3dbf4acb54dff361",
+        "type": "switch",
+        "z": "e0bfbcd2c2645a60",
+        "name": "",
+        "property": "$count(msg.payload)",
+        "propertyType": "jsonata",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "0",
+                "vt": "num"
+            },
+            {
+                "t": "else"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 2,
+        "x": 590,
+        "y": 320,
+        "wires": [
+            [
+                "a13baa2699d67e0e"
+            ],
+            [
+                "935c231bf59b55ef"
+            ]
+        ]
+    },
+    {
+        "id": "f6f43685e012fa1d",
+        "type": "csv",
+        "z": "e0bfbcd2c2645a60",
+        "name": "",
+        "sep": ",",
+        "hdrin": "",
+        "hdrout": "all",
+        "multi": "one",
+        "ret": "\\r\\n",
+        "temp": "timestamp,acc_X,acc_Y,acc_Z,w,i,j,k,psi,theta,phi",
+        "skip": "0",
+        "strings": true,
+        "include_empty_strings": false,
+        "include_null_values": false,
+        "x": 970,
+        "y": 300,
+        "wires": [
+            [
+                "f567e4794d4a25a1"
+            ]
+        ]
+    },
+    {
+        "id": "f567e4794d4a25a1",
+        "type": "file",
+        "z": "e0bfbcd2c2645a60",
+        "name": "",
+        "filename": "filename",
+        "filenameType": "msg",
+        "appendNewline": false,
+        "createDir": true,
+        "overwriteFile": "false",
+        "encoding": "none",
+        "x": 1140,
+        "y": 300,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "8749a18d58b8c5a4",
+        "type": "csv",
+        "z": "e0bfbcd2c2645a60",
+        "name": "",
+        "sep": ",",
+        "hdrin": "",
+        "hdrout": "none",
+        "multi": "one",
+        "ret": "\\r\\n",
+        "temp": "timestamp,acc_X,acc_Y,acc_Z,w,i,j,k,psi,theta,phi",
+        "skip": "0",
+        "strings": true,
+        "include_empty_strings": false,
+        "include_null_values": false,
+        "x": 970,
+        "y": 340,
+        "wires": [
+            [
+                "f567e4794d4a25a1"
+            ]
+        ]
+    },
+    {
+        "id": "a13baa2699d67e0e",
+        "type": "change",
+        "z": "e0bfbcd2c2645a60",
+        "name": "Get file content",
+        "rules": [
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "filecontent",
+                "tot": "msg"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 790,
+        "y": 300,
+        "wires": [
+            [
+                "f6f43685e012fa1d"
+            ]
+        ]
+    },
+    {
+        "id": "935c231bf59b55ef",
+        "type": "change",
+        "z": "e0bfbcd2c2645a60",
+        "name": "Get file content",
+        "rules": [
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "filecontent",
+                "tot": "msg"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 790,
+        "y": 340,
+        "wires": [
+            [
+                "8749a18d58b8c5a4"
+            ]
+        ]
+    },
+    {
+        "id": "199ee33efb79cb35",
+        "type": "fs-file-lister",
+        "z": "e0bfbcd2c2645a60",
+        "name": "",
+        "start": "C:\\\\Users\\\\acer\\\\Documents\\\\Accedemic_Folder_E19254\\\\Wearable_Hardwear_Project\\\\Sensor_Data\\\\",
+        "pattern": "*.*",
+        "folders": "*",
+        "hidden": true,
+        "lstype": "files",
+        "path": true,
+        "single": true,
+        "depth": 0,
+        "stat": false,
+        "showWarnings": true,
+        "x": 460,
+        "y": 320,
+        "wires": [
+            [
+                "3dbf4acb54dff361"
+            ]
+        ]
+    },
+    {
+        "id": "2e1b6e4e5a66a568",
+        "type": "mqtt in",
+        "z": "e0bfbcd2c2645a60",
+        "name": "accelerometer",
+        "topic": "sensor/mpu6050_02",
+        "qos": "2",
+        "datatype": "auto-detect",
+        "broker": "9764ab2546e3a982",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 130,
+        "y": 320,
+        "wires": [
+            [
+                "83282add38787ce6"
+            ]
+        ]
+    },
+    {
+        "id": "bce209bf622d546e",
+        "type": "debug",
+        "z": "e0bfbcd2c2645a60",
+        "name": "debug 2",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 320,
+        "y": 240,
+        "wires": []
+    },
+    {
+        "id": "5fbacab9d7585fa8",
+        "type": "serial in",
+        "z": "e0bfbcd2c2645a60",
+        "name": "ESP_reciver",
+        "serial": "ca253d5ed38a1540",
+        "x": 130,
+        "y": 540,
+        "wires": [
+            [
+                "98091a05649c3c83"
+            ]
+        ]
+    },
+    {
+        "id": "a38e43ed7eeaf3dc",
+        "type": "debug",
+        "z": "e0bfbcd2c2645a60",
+        "name": "debug 4",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload.timestamp",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 420,
+        "y": 480,
+        "wires": []
+    },
+    {
+        "id": "6d72991103b5885e",
+        "type": "switch",
+        "z": "e0bfbcd2c2645a60",
+        "name": "",
+        "property": "payload.sender",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "30:AE:A4:28:38:D8",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "30:AE:A4:28:3A:D4",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "",
+                "vt": "str"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 4,
+        "x": 430,
+        "y": 540,
+        "wires": [
+            [
+                "fe6a27b4c82bb975"
+            ],
+            [
+                "fe80831e63ad0454"
+            ],
+            [
+                "ed83d7e23b5d80b4"
+            ],
+            [
+                "1e63022a7b2c0613"
+            ]
+        ]
+    },
+    {
+        "id": "98091a05649c3c83",
+        "type": "json",
+        "z": "e0bfbcd2c2645a60",
+        "name": "",
+        "property": "payload",
+        "action": "",
+        "pretty": false,
+        "x": 290,
+        "y": 540,
+        "wires": [
+            [
+                "6d72991103b5885e",
+                "a38e43ed7eeaf3dc"
+            ]
+        ]
+    },
+    {
+        "id": "fe80831e63ad0454",
+        "type": "function",
+        "z": "e0bfbcd2c2645a60",
+        "name": "file_name_gen",
+        "func": "// Get the current time and convert it to text\nvar now = new Date();\nvar yyyy = now.getFullYear();\nvar mm = now.getMonth() < 9 ? \"0\" + (now.getMonth() + 1) : (now.getMonth() + 1); // getMonth() is zero-based\nvar dd  = now.getDate() < 10 ? \"0\" + now.getDate() : now.getDate();\nvar hh = now.getHours() < 10 ? \"0\" + now.getHours() : now.getHours();\nvar mmm  = now.getMinutes() < 10 ? \"0\" + now.getMinutes() : now.getMinutes();\nvar ss  = now.getSeconds() < 10 ? \"0\" + now.getSeconds() : now.getSeconds();\n\n// Generate out file name pattern\nmsg.fname = \"sensor02_ESP_data_\"+ yyyy + mm + dd + \".csv\";\n// Full filename with path for the file node later\nmsg.filename = \"C:\\\\Users\\\\acer\\\\Documents\\\\Accedemic_Folder_E19254\\\\Wearable_Hardwear_Project\\\\Sensor_Data\\\\\" + msg.fname;\n\n// We save the current payload into a different place on the msg object\nmsg.filecontent = msg.payload;\n\n// We are passing the file name search pattern to fs node to tell us if the file exists or not\nmsg.payload = {\"pattern\":msg.fname};\n\nnode.status({fill:\"blue\",shape:\"ring\",text:msg.fname});\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 700,
+        "y": 500,
+        "wires": [
+            [
+                "e97bb89e9e5f84e2"
+            ]
+        ]
+    },
+    {
+        "id": "d4d71054ad0e1612",
+        "type": "switch",
+        "z": "e0bfbcd2c2645a60",
+        "name": "",
+        "property": "$count(msg.payload)",
+        "propertyType": "jsonata",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "0",
+                "vt": "num"
+            },
+            {
+                "t": "else"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 2,
+        "x": 990,
+        "y": 500,
+        "wires": [
+            [
+                "8b0040b2a478eb47"
+            ],
+            [
+                "329742494992d10d"
+            ]
+        ]
+    },
+    {
+        "id": "0dfe385576398897",
+        "type": "csv",
+        "z": "e0bfbcd2c2645a60",
+        "name": "",
+        "sep": ",",
+        "hdrin": "",
+        "hdrout": "all",
+        "multi": "one",
+        "ret": "\\r\\n",
+        "temp": "timestamp,acc_X,acc_Y,acc_Z,w,i,j,k,psi,theta,phi",
+        "skip": "0",
+        "strings": true,
+        "include_empty_strings": false,
+        "include_null_values": false,
+        "x": 1370,
+        "y": 480,
+        "wires": [
+            [
+                "1c774dd2906b46fe"
+            ]
+        ]
+    },
+    {
+        "id": "1c774dd2906b46fe",
+        "type": "file",
+        "z": "e0bfbcd2c2645a60",
+        "name": "",
+        "filename": "filename",
+        "filenameType": "msg",
+        "appendNewline": false,
+        "createDir": true,
+        "overwriteFile": "false",
+        "encoding": "none",
+        "x": 1540,
+        "y": 480,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "c9c7658bfb81b32e",
+        "type": "csv",
+        "z": "e0bfbcd2c2645a60",
+        "name": "",
+        "sep": ",",
+        "hdrin": "",
+        "hdrout": "none",
+        "multi": "one",
+        "ret": "\\r\\n",
+        "temp": "timestamp,acc_X,acc_Y,acc_Z,w,i,j,k,psi,theta,phi",
+        "skip": "0",
+        "strings": true,
+        "include_empty_strings": false,
+        "include_null_values": false,
+        "x": 1370,
+        "y": 520,
+        "wires": [
+            [
+                "1c774dd2906b46fe"
+            ]
+        ]
+    },
+    {
+        "id": "8b0040b2a478eb47",
+        "type": "change",
+        "z": "e0bfbcd2c2645a60",
+        "name": "Get file content",
+        "rules": [
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "filecontent",
+                "tot": "msg"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 1190,
+        "y": 480,
+        "wires": [
+            [
+                "0dfe385576398897"
+            ]
+        ]
+    },
+    {
+        "id": "329742494992d10d",
+        "type": "change",
+        "z": "e0bfbcd2c2645a60",
+        "name": "Get file content",
+        "rules": [
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "filecontent",
+                "tot": "msg"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 1190,
+        "y": 520,
+        "wires": [
+            [
+                "c9c7658bfb81b32e"
+            ]
+        ]
+    },
+    {
+        "id": "e97bb89e9e5f84e2",
+        "type": "fs-file-lister",
+        "z": "e0bfbcd2c2645a60",
+        "name": "",
+        "start": "C:\\\\Users\\\\acer\\\\Documents\\\\Accedemic_Folder_E19254\\\\Wearable_Hardwear_Project\\\\Sensor_Data\\\\",
+        "pattern": "*.*",
+        "folders": "*",
+        "hidden": true,
+        "lstype": "files",
+        "path": true,
+        "single": true,
+        "depth": 0,
+        "stat": false,
+        "showWarnings": true,
+        "x": 860,
+        "y": 500,
+        "wires": [
+            [
+                "d4d71054ad0e1612"
+            ]
+        ]
+    },
+    {
+        "id": "fe6a27b4c82bb975",
+        "type": "function",
+        "z": "e0bfbcd2c2645a60",
+        "name": "file_name_gen",
+        "func": "// Get the current time and convert it to text\nvar now = new Date();\nvar yyyy = now.getFullYear();\nvar mm = now.getMonth() < 9 ? \"0\" + (now.getMonth() + 1) : (now.getMonth() + 1); // getMonth() is zero-based\nvar dd  = now.getDate() < 10 ? \"0\" + now.getDate() : now.getDate();\nvar hh = now.getHours() < 10 ? \"0\" + now.getHours() : now.getHours();\nvar mmm  = now.getMinutes() < 10 ? \"0\" + now.getMinutes() : now.getMinutes();\nvar ss  = now.getSeconds() < 10 ? \"0\" + now.getSeconds() : now.getSeconds();\n\n// Generate out file name pattern\nmsg.fname = \"sensor01_ESP_data_\"+ yyyy + mm + dd + \".csv\";\n// Full filename with path for the file node later\nmsg.filename = \"C:\\\\Users\\\\acer\\\\Documents\\\\Accedemic_Folder_E19254\\\\Wearable_Hardwear_Project\\\\Sensor_Data\\\\\"+ msg.fname;\n\n// We save the current payload into a different place on the msg object\nmsg.filecontent = msg.payload;\n\n// We are passing the file name search pattern to fs node to tell us if the file exists or not\nmsg.payload = {\"pattern\":msg.fname};\n\nnode.status({fill:\"blue\",shape:\"ring\",text:msg.fname});\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 700,
+        "y": 420,
+        "wires": [
+            [
+                "7b2d348f02d9b0b8"
+            ]
+        ]
+    },
+    {
+        "id": "9ca21714f13656b9",
+        "type": "switch",
+        "z": "e0bfbcd2c2645a60",
+        "name": "",
+        "property": "$count(msg.payload)",
+        "propertyType": "jsonata",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "0",
+                "vt": "num"
+            },
+            {
+                "t": "else"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 2,
+        "x": 990,
+        "y": 420,
+        "wires": [
+            [
+                "0b405dfd02a0064e"
+            ],
+            [
+                "c4daf90b156a21e1"
+            ]
+        ]
+    },
+    {
+        "id": "290eefb396ed0092",
+        "type": "csv",
+        "z": "e0bfbcd2c2645a60",
+        "name": "",
+        "sep": ",",
+        "hdrin": "",
+        "hdrout": "all",
+        "multi": "one",
+        "ret": "\\r\\n",
+        "temp": "timestamp,acc_X,acc_Y,acc_Z,w,i,j,k,psi,theta,phi",
+        "skip": "0",
+        "strings": true,
+        "include_empty_strings": false,
+        "include_null_values": false,
+        "x": 1370,
+        "y": 400,
+        "wires": [
+            [
+                "1a3e96d64fdc933e"
+            ]
+        ]
+    },
+    {
+        "id": "1a3e96d64fdc933e",
+        "type": "file",
+        "z": "e0bfbcd2c2645a60",
+        "name": "",
+        "filename": "filename",
+        "filenameType": "msg",
+        "appendNewline": false,
+        "createDir": true,
+        "overwriteFile": "false",
+        "encoding": "none",
+        "x": 1540,
+        "y": 400,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "2bfae8155bdb2e89",
+        "type": "csv",
+        "z": "e0bfbcd2c2645a60",
+        "name": "",
+        "sep": ",",
+        "hdrin": "",
+        "hdrout": "none",
+        "multi": "one",
+        "ret": "\\r\\n",
+        "temp": "timestamp,acc_X,acc_Y,acc_Z,w,i,j,k,psi,theta,phi",
+        "skip": "0",
+        "strings": true,
+        "include_empty_strings": false,
+        "include_null_values": false,
+        "x": 1370,
+        "y": 440,
+        "wires": [
+            [
+                "1a3e96d64fdc933e"
+            ]
+        ]
+    },
+    {
+        "id": "0b405dfd02a0064e",
+        "type": "change",
+        "z": "e0bfbcd2c2645a60",
+        "name": "Get file content",
+        "rules": [
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "filecontent",
+                "tot": "msg"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 1190,
+        "y": 400,
+        "wires": [
+            [
+                "290eefb396ed0092"
+            ]
+        ]
+    },
+    {
+        "id": "c4daf90b156a21e1",
+        "type": "change",
+        "z": "e0bfbcd2c2645a60",
+        "name": "Get file content",
+        "rules": [
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "filecontent",
+                "tot": "msg"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 1190,
+        "y": 440,
+        "wires": [
+            [
+                "2bfae8155bdb2e89"
+            ]
+        ]
+    },
+    {
+        "id": "7b2d348f02d9b0b8",
+        "type": "fs-file-lister",
+        "z": "e0bfbcd2c2645a60",
+        "name": "",
+        "start": "C:\\\\Users\\\\acer\\\\Documents\\\\Accedemic_Folder_E19254\\\\Wearable_Hardwear_Project\\\\Sensor_Data\\\\",
+        "pattern": "*.*",
+        "folders": "*",
+        "hidden": true,
+        "lstype": "files",
+        "path": true,
+        "single": true,
+        "depth": 0,
+        "stat": false,
+        "showWarnings": true,
+        "x": 860,
+        "y": 420,
+        "wires": [
+            [
+                "9ca21714f13656b9"
+            ]
+        ]
+    },
+    {
+        "id": "ed83d7e23b5d80b4",
+        "type": "function",
+        "z": "e0bfbcd2c2645a60",
+        "name": "file_name_gen",
+        "func": "// Get the current time and convert it to text\nvar now = new Date();\nvar yyyy = now.getFullYear();\nvar mm = now.getMonth() < 9 ? \"0\" + (now.getMonth() + 1) : (now.getMonth() + 1); // getMonth() is zero-based\nvar dd  = now.getDate() < 10 ? \"0\" + now.getDate() : now.getDate();\nvar hh = now.getHours() < 10 ? \"0\" + now.getHours() : now.getHours();\nvar mmm  = now.getMinutes() < 10 ? \"0\" + now.getMinutes() : now.getMinutes();\nvar ss  = now.getSeconds() < 10 ? \"0\" + now.getSeconds() : now.getSeconds();\n\n// Generate out file name pattern\nmsg.fname = \"sensor03_ESP_data_\"+ yyyy + mm + dd + \".csv\";\n// Full filename with path for the file node later\nmsg.filename = \"C:\\\\Users\\\\acer\\\\Documents\\\\Accedemic_Folder_E19254\\\\Wearable_Hardwear_Project\\\\Sensor_Data\\\\\" + msg.fname;\n\n// We save the current payload into a different place on the msg object\nmsg.filecontent = msg.payload;\n\n// We are passing the file name search pattern to fs node to tell us if the file exists or not\nmsg.payload = {\"pattern\":msg.fname};\n\nnode.status({fill:\"blue\",shape:\"ring\",text:msg.fname});\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 700,
+        "y": 580,
+        "wires": [
+            [
+                "ce83961abb85f2f5"
+            ]
+        ]
+    },
+    {
+        "id": "92657a3c523568fb",
+        "type": "switch",
+        "z": "e0bfbcd2c2645a60",
+        "name": "",
+        "property": "$count(msg.payload)",
+        "propertyType": "jsonata",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "0",
+                "vt": "num"
+            },
+            {
+                "t": "else"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 2,
+        "x": 990,
+        "y": 580,
+        "wires": [
+            [
+                "2c748dbb80c8505a"
+            ],
+            [
+                "42e037bde7ae53ee"
+            ]
+        ]
+    },
+    {
+        "id": "fc31f6e288aec897",
+        "type": "csv",
+        "z": "e0bfbcd2c2645a60",
+        "name": "",
+        "sep": ",",
+        "hdrin": "",
+        "hdrout": "all",
+        "multi": "one",
+        "ret": "\\r\\n",
+        "temp": "timestamp,acc_X,acc_Y,acc_Z,w,i,j,k,psi,theta,phi",
+        "skip": "0",
+        "strings": true,
+        "include_empty_strings": false,
+        "include_null_values": false,
+        "x": 1370,
+        "y": 560,
+        "wires": [
+            [
+                "f39abb716f99b0cc"
+            ]
+        ]
+    },
+    {
+        "id": "f39abb716f99b0cc",
+        "type": "file",
+        "z": "e0bfbcd2c2645a60",
+        "name": "",
+        "filename": "filename",
+        "filenameType": "msg",
+        "appendNewline": false,
+        "createDir": true,
+        "overwriteFile": "false",
+        "encoding": "none",
+        "x": 1540,
+        "y": 560,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "c18825d9d1164502",
+        "type": "csv",
+        "z": "e0bfbcd2c2645a60",
+        "name": "",
+        "sep": ",",
+        "hdrin": "",
+        "hdrout": "none",
+        "multi": "one",
+        "ret": "\\r\\n",
+        "temp": "timestamp,acc_X,acc_Y,acc_Z,w,i,j,k,psi,theta,phi",
+        "skip": "0",
+        "strings": true,
+        "include_empty_strings": false,
+        "include_null_values": false,
+        "x": 1370,
+        "y": 600,
+        "wires": [
+            [
+                "f39abb716f99b0cc"
+            ]
+        ]
+    },
+    {
+        "id": "2c748dbb80c8505a",
+        "type": "change",
+        "z": "e0bfbcd2c2645a60",
+        "name": "Get file content",
+        "rules": [
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "filecontent",
+                "tot": "msg"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 1190,
+        "y": 560,
+        "wires": [
+            [
+                "fc31f6e288aec897"
+            ]
+        ]
+    },
+    {
+        "id": "42e037bde7ae53ee",
+        "type": "change",
+        "z": "e0bfbcd2c2645a60",
+        "name": "Get file content",
+        "rules": [
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "filecontent",
+                "tot": "msg"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 1190,
+        "y": 600,
+        "wires": [
+            [
+                "c18825d9d1164502"
+            ]
+        ]
+    },
+    {
+        "id": "ce83961abb85f2f5",
+        "type": "fs-file-lister",
+        "z": "e0bfbcd2c2645a60",
+        "name": "",
+        "start": "C:\\\\Users\\\\acer\\\\Documents\\\\Accedemic_Folder_E19254\\\\Wearable_Hardwear_Project\\\\Sensor_Data\\\\",
+        "pattern": "*.*",
+        "folders": "*",
+        "hidden": true,
+        "lstype": "files",
+        "path": true,
+        "single": true,
+        "depth": 0,
+        "stat": false,
+        "showWarnings": true,
+        "x": 860,
+        "y": 580,
+        "wires": [
+            [
+                "92657a3c523568fb"
+            ]
+        ]
+    },
+    {
+        "id": "1e63022a7b2c0613",
+        "type": "function",
+        "z": "e0bfbcd2c2645a60",
+        "name": "file_name_gen",
+        "func": "// Get the current time and convert it to text\nvar now = new Date();\nvar yyyy = now.getFullYear();\nvar mm = now.getMonth() < 9 ? \"0\" + (now.getMonth() + 1) : (now.getMonth() + 1); // getMonth() is zero-based\nvar dd  = now.getDate() < 10 ? \"0\" + now.getDate() : now.getDate();\nvar hh = now.getHours() < 10 ? \"0\" + now.getHours() : now.getHours();\nvar mmm  = now.getMinutes() < 10 ? \"0\" + now.getMinutes() : now.getMinutes();\nvar ss  = now.getSeconds() < 10 ? \"0\" + now.getSeconds() : now.getSeconds();\n\n// Generate out file name pattern\nmsg.fname = \"sensor04_ESP_data_\"+ yyyy + mm + dd + \".csv\";\n// Full filename with path for the file node later\nmsg.filename = \"C:\\\\Users\\\\acer\\\\Documents\\\\Accedemic_Folder_E19254\\\\Wearable_Hardwear_Project\\\\Sensor_Data\\\\\" + msg.fname;\n\n// We save the current payload into a different place on the msg object\nmsg.filecontent = msg.payload;\n\n// We are passing the file name search pattern to fs node to tell us if the file exists or not\nmsg.payload = {\"pattern\":msg.fname};\n\nnode.status({fill:\"blue\",shape:\"ring\",text:msg.fname});\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 700,
+        "y": 660,
+        "wires": [
+            [
+                "ca880b23d7f41972"
+            ]
+        ]
+    },
+    {
+        "id": "afccf640a1f52470",
+        "type": "switch",
+        "z": "e0bfbcd2c2645a60",
+        "name": "",
+        "property": "$count(msg.payload)",
+        "propertyType": "jsonata",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "0",
+                "vt": "num"
+            },
+            {
+                "t": "else"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 2,
+        "x": 990,
+        "y": 660,
+        "wires": [
+            [
+                "b45977be0f77b2fe"
+            ],
+            [
+                "35dfd014f1f7512c"
+            ]
+        ]
+    },
+    {
+        "id": "55f344ea910746ac",
+        "type": "csv",
+        "z": "e0bfbcd2c2645a60",
+        "name": "",
+        "sep": ",",
+        "hdrin": "",
+        "hdrout": "all",
+        "multi": "one",
+        "ret": "\\r\\n",
+        "temp": "timestamp,acc_X,acc_Y,acc_Z,w,i,j,k,psi,theta,phi",
+        "skip": "0",
+        "strings": true,
+        "include_empty_strings": false,
+        "include_null_values": false,
+        "x": 1370,
+        "y": 640,
+        "wires": [
+            [
+                "59785f75f7b206ce"
+            ]
+        ]
+    },
+    {
+        "id": "59785f75f7b206ce",
+        "type": "file",
+        "z": "e0bfbcd2c2645a60",
+        "name": "",
+        "filename": "filename",
+        "filenameType": "msg",
+        "appendNewline": false,
+        "createDir": true,
+        "overwriteFile": "false",
+        "encoding": "none",
+        "x": 1540,
+        "y": 640,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "551d5df18da52e70",
+        "type": "csv",
+        "z": "e0bfbcd2c2645a60",
+        "name": "",
+        "sep": ",",
+        "hdrin": "",
+        "hdrout": "none",
+        "multi": "one",
+        "ret": "\\r\\n",
+        "temp": "timestamp,acc_X,acc_Y,acc_Z,w,i,j,k,psi,theta,phi",
+        "skip": "0",
+        "strings": true,
+        "include_empty_strings": false,
+        "include_null_values": false,
+        "x": 1370,
+        "y": 680,
+        "wires": [
+            [
+                "59785f75f7b206ce"
+            ]
+        ]
+    },
+    {
+        "id": "b45977be0f77b2fe",
+        "type": "change",
+        "z": "e0bfbcd2c2645a60",
+        "name": "Get file content",
+        "rules": [
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "filecontent",
+                "tot": "msg"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 1190,
+        "y": 640,
+        "wires": [
+            [
+                "55f344ea910746ac"
+            ]
+        ]
+    },
+    {
+        "id": "35dfd014f1f7512c",
+        "type": "change",
+        "z": "e0bfbcd2c2645a60",
+        "name": "Get file content",
+        "rules": [
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "filecontent",
+                "tot": "msg"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 1190,
+        "y": 680,
+        "wires": [
+            [
+                "551d5df18da52e70"
+            ]
+        ]
+    },
+    {
+        "id": "ca880b23d7f41972",
+        "type": "fs-file-lister",
+        "z": "e0bfbcd2c2645a60",
+        "name": "",
+        "start": "C:\\\\Users\\\\acer\\\\Documents\\\\Accedemic_Folder_E19254\\\\Wearable_Hardwear_Project\\\\Sensor_Data\\\\",
+        "pattern": "*.*",
+        "folders": "*",
+        "hidden": true,
+        "lstype": "files",
+        "path": true,
+        "single": true,
+        "depth": 0,
+        "stat": false,
+        "showWarnings": true,
+        "x": 860,
+        "y": 660,
+        "wires": [
+            [
+                "afccf640a1f52470"
+            ]
+        ]
+    },
+    {
+        "id": "9764ab2546e3a982",
+        "type": "mqtt-broker",
+        "name": "Local MQTT",
+        "broker": "localhost",
+        "port": "1883",
+        "clientid": "",
+        "autoConnect": true,
+        "usetls": false,
+        "protocolVersion": "4",
+        "keepalive": "60",
+        "cleansession": true,
+        "autoUnsubscribe": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthRetain": "false",
+        "birthPayload": "",
+        "birthMsg": {},
+        "closeTopic": "",
+        "closeQos": "0",
+        "closeRetain": "false",
+        "closePayload": "",
+        "closeMsg": {},
+        "willTopic": "",
+        "willQos": "0",
+        "willRetain": "false",
+        "willPayload": "",
+        "willMsg": {},
+        "userProps": "",
+        "sessionExpiry": ""
+    },
+    {
+        "id": "ca253d5ed38a1540",
+        "type": "serial-port",
+        "name": "Prolific_COM6",
+        "serialport": "COM6",
+        "serialbaud": "9600",
+        "databits": "8",
+        "parity": "none",
+        "stopbits": "1",
+        "waitfor": "",
+        "dtr": "none",
+        "rts": "none",
+        "cts": "none",
+        "dsr": "none",
+        "newline": "\\n",
+        "bin": "false",
+        "out": "char",
+        "addchar": "",
+        "responsetimeout": "10000"
+    }
+]
