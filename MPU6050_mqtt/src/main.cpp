@@ -5,11 +5,11 @@
 #include <PubSubClient.h>
 
 // Replace with your network credentials and MQTT broker details
-const char* ssid = "TIEC-2.4G";//"Tharinda_Lap";//"TIEC-2.4G";//"SLT-Fiber-37DB";
-const char* password = "TIEC2954";//"Rashmi1213";//"nava@123";//"TIEC2954";
-const char* mqtt_server = "192.168.1.103";//"192.168.1.105";//"192.168.1.2";//"192.168.1.102";//"ec2-54-219-34-11.us-west-1.compute.amazonaws.com";
-const char* mqtt_topic = "sensor/mpu6050_02";
-const char* client_id = "ESP32_MPU6050_02";
+const char* ssid = "Eng-Student";//"Tharinda_Lap";//"TIEC-2.4G";//"SLT-Fiber-37DB";
+const char* password = "3nG5tuDt";//"Rashmi1213";//"nava@123";//"TIEC2954";
+const char* mqtt_server = "10.30.9.146";//"192.168.1.105";//"192.168.1.2";//"192.168.1.102";//"ec2-54-219-34-11.us-west-1.compute.amazonaws.com";
+const char* mqtt_topic = "sensor/mpu6050_01";
+const char* client_id = "ESP32_MPU6050_01";
 
 WiFiClient espClient;
 PubSubClient client(espClient);
