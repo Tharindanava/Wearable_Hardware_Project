@@ -5,11 +5,11 @@
 #include <PubSubClient.h>
 
 // Replace with your network credentials and MQTT broker details
-const char* ssid = "ZTE";//"Eng-Student";//"Tharinda_Lap";//"TIEC-2.4G";//"SLT-Fiber-37DB";
-const char* password = "Agrovoltic";//"3nG5tuDt";//"Rashmi1213";//"nava@123";//"TIEC2954";
-const char* mqtt_server = "192.168.1.102";//"192.168.1.105";//"192.168.1.2";//"192.168.1.10";//"ec2-54-219-34-11.us-west-1.compute.amazonaws.com";
-const char* mqtt_topic = "sensor/mpu6050_in";
-const char* client_id = "ESP32_MPU6050_03";
+const char* ssid = "Eng-Student";//"Eng-Student";//"Tharinda_Lap";//"TIEC-2.4G";//"SLT-Fiber-37DB";
+const char* password = "3nG5tuDt";//"3nG5tuDt";//"Rashmi1213";//"nava@123";//"TIEC2954";
+const char* mqtt_server = "10.30.9.74";//"192.168.1.105";//"192.168.1.2";//"192.168.1.10";//"ec2-54-219-34-11.us-west-1.compute.amazonaws.com";
+const char* mqtt_topic = "sensor/mpu6050_2";
+const char* client_id = "ESP32_MPU6050_02";
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -23,6 +23,7 @@ uint16_t packetSize;
 uint8_t fifoBuffer[64];
 
 Quaternion q;
+VectorInt16 dmp_gyro;
 VectorInt16 aa;
 VectorInt16 aaReal;
 VectorInt16 aaWorld;
@@ -59,6 +60,7 @@ void getSensorDataTask(void* parameter) {
     if (!dmpReady) continue;
 
     if (mpu.dmpGetCurrentFIFOPacket(fifoBuffer)) {
+      mpu.dmpGetGyro(&dmp_gyro, fifoBuffer);
       mpu.dmpGetQuaternion(&q, fifoBuffer);
       mpu.dmpGetAccel(&aa, fifoBuffer);
       mpu.dmpGetGravity(&gravity, &q);
@@ -66,9 +68,9 @@ void getSensorDataTask(void* parameter) {
       mpu.dmpConvertToWorldFrame(&aaWorld, &aaReal, &q);
       mpu.dmpGetEuler(euler, &q);
 
-      acc_X = aaReal.x / 835.066;
-      acc_Y = aaReal.y / 835.066;
-      acc_Z = aaReal.z / 835.066;
+      acc_X = aa.x / 835.066;
+      acc_Y = aa.y / 835.066;
+      acc_Z = aa.z / 835.066;
 
       unsigned long timestamp = millis(); // Get timestamp in milliseconds
 
@@ -93,16 +95,16 @@ void publishSensorDataTask(void* parameter) {
 
     jsonPayload = "{";
     jsonPayload += "\"timestamp\":\"" + String(timestamp) + "\",";
-    jsonPayload += "\"acc_X\":\"" + String(acc_X) + "\",";
-    jsonPayload += "\"acc_Y\":\"" + String(acc_Y) + "\",";
-    jsonPayload += "\"acc_Z\":\"" + String(acc_Z) + "\",";
+    jsonPayload += "\"acc_X\":\"" + String(aa.x) + "\",";
+    jsonPayload += "\"acc_Y\":\"" + String(aa.y) + "\",";
+    jsonPayload += "\"acc_Z\":\"" + String(aa.z) + "\",";
     jsonPayload += "\"w\":\"" + String(q.w) + "\",";
     jsonPayload += "\"i\":\"" + String(q.x) + "\",";
     jsonPayload += "\"j\":\"" + String(q.y) + "\",";
     jsonPayload += "\"k\":\"" + String(q.z) + "\",";
-    jsonPayload += "\"psi\":\"" + String(euler[0]) + "\",";
-    jsonPayload += "\"theta\":\"" + String(euler[1]) + "\",";
-    jsonPayload += "\"phi\":\"" + String(euler[2]) + "\"";
+    jsonPayload += "\"gyro_X\":\"" + String(dmp_gyro.x) + "\",";
+    jsonPayload += "\"gyro_Y\":\"" + String(dmp_gyro.y) + "\",";
+    jsonPayload += "\"gyro_Z\":\"" + String(dmp_gyro.z) + "\"";
     jsonPayload += "}";
     client.publish(mqtt_topic, jsonPayload.c_str());
     xSemaphoreGive(dataSemaphore);
