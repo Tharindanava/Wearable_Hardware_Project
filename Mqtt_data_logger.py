@@ -1,70 +1,141 @@
 import sys
-import json
 import time
 import pandas as pd
 from paho.mqtt import client as mqtt_client
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, 
                             QPushButton, QWidget, QLabel, QComboBox, QFileDialog,
                             QTextEdit, QGroupBox, QSpinBox, QMessageBox)
-from PyQt5.QtCore import QTimer, Qt, pyqtSignal, QObject, QDateTime
-from collections import defaultdict
+from PyQt5.QtCore import QTimer, Qt, pyqtSignal, QObject, QDateTime, QThread
+from collections import defaultdict, deque
 from typing import Dict, List, Set, Optional, Any
+import threading
+import numpy as np
 
-class MQTTCommunicator(QObject):
-    message_received = pyqtSignal(str, dict)
+class MQTTWorker(QObject):
+    message_received = pyqtSignal(str, dict)  # device_id, data
+    device_discovered = pyqtSignal(str)
+    device_lost = pyqtSignal(str)
     connection_status = pyqtSignal(str)
     
-    def __init__(self, broker: str, port: int, topic_pattern: str):
+    def __init__(self, broker: str, port: int, sampling_rate: int):
         super().__init__()
         self.broker = broker
         self.port = port
-        self.topic_pattern = topic_pattern
-        self.client = mqtt_client.Client()
-        self.client.on_connect = self.on_connect
-        self.client.on_message = self.on_message
-        self.client.on_disconnect = self.on_disconnect
-        
-    def start(self) -> None:
-        """Start the MQTT client connection"""
+        self.sampling_rate = sampling_rate
+        self.active_devices = set()
+        self.device_last_seen = {}
+        self.device_timeout = 10  # seconds
+        self.ping_sequence = deque()
+        self.client = None
+        self.last_values = {}
+
+    def start(self):
         try:
-            self.client.connect(self.broker, self.port, keepalive=60)
+            self.client = mqtt_client.Client()
+            self.client.on_connect = self.on_connect
+            self.client.on_message = self.on_message
+            self.client.connect(self.broker, self.port)
             self.client.loop_start()
+            self.connection_status.emit("Connected to MQTT Broker")
         except Exception as e:
             self.connection_status.emit(f"Connection failed: {str(e)}")
-            
-    def stop(self) -> None:
-        """Stop the MQTT client connection"""
-        self.client.loop_stop()
-        self.client.disconnect()
-        
-    def on_connect(self, client: mqtt_client.Client, userdata: Any, flags: Dict, rc: int) -> None:
-        """Callback for when the client connects to the broker"""
+
+    def on_connect(self, client, userdata, flags, rc):
         if rc == 0:
+            client.subscribe("sensor/announce")
+            client.subscribe("sensor/data/#")
             self.connection_status.emit("Connected to MQTT Broker")
-            self.client.subscribe(self.topic_pattern)
         else:
-            self.connection_status.emit(f"Failed to connect, return code {rc}")
-            
-    def on_disconnect(self, client: mqtt_client.Client, userdata: Any, rc: int) -> None:
-        """Callback for when the client disconnects from the broker"""
-        if rc != 0:
-            self.connection_status.emit(f"Unexpected disconnection (rc={rc}), reconnecting...")
-            self.start()
-            
-    def on_message(self, client: mqtt_client.Client, userdata: Any, msg: mqtt_client.MQTTMessage) -> None:
-        """Callback for when a message is received"""
+            self.connection_status.emit(f"Connection failed with code {rc}")
+
+    def on_message(self, client, userdata, msg):
         try:
-            sensor_id = msg.topic.split('/')[-1]
-            payload = json.loads(msg.payload.decode())
+            topic_parts = msg.topic.split('/')
             
-            # Ensure timestamp is an integer
-            payload['timestamp'] = int(payload.get('timestamp', time.time() * 1000))
+            if msg.topic == "sensor/announce":
+                device_id = msg.payload.decode()
+                if device_id in ["alive", "connected"]:
+                    return
+                self.register_device(device_id)
+                return
                 
-            self.message_received.emit(sensor_id, payload)
-        except json.JSONDecodeError:
-            print(f"Failed to decode JSON payload from {msg.topic}")
+            if len(topic_parts) == 3 and topic_parts[0] == "sensor" and topic_parts[1] == "data":
+                device_id = topic_parts[2]
+                self.register_device(device_id)
+                payload = msg.payload.decode()
+                try:
+                    data = self.parse_sensor_data(payload)
+                    data['device_id'] = device_id
+                    self.last_values[device_id] = data
+                    self.message_received.emit(device_id, data)
+                except ValueError as e:
+                    print(f"Error parsing data from {device_id}: {e}")
+                
         except Exception as e:
             print(f"Error processing message: {e}")
+
+    def register_device(self, device_id: str):
+        if device_id not in self.active_devices:
+            self.active_devices.add(device_id)
+            self.ping_sequence.append(device_id)
+            self.device_discovered.emit(device_id)
+            print(f"New device discovered: {device_id}")
+            
+        self.device_last_seen[device_id] = time.time()
+        self.update_ping_timer()
+
+    def update_ping_timer(self):
+        if not self.active_devices:
+            return
+            
+        # Calculate desired ping interval (ms between pings to same device)
+        total_cycle_time = 1000 / self.sampling_rate  # Total time for one complete cycle (ms)
+        ping_interval = total_cycle_time / len(self.active_devices)
+        
+        # Ensure we don't go too fast (minimum 1ms between pings)
+        ping_interval = max(ping_interval, 1)
+        
+        # This will be handled by the main thread's timer
+        return ping_interval
+
+    def send_next_ping(self):
+        if self.ping_sequence and self.client:
+            device = self.ping_sequence.popleft()
+            topic = f"sensor/ping/{device}"
+            self.client.publish(topic, "1")
+            self.ping_sequence.append(device)
+
+    def check_device_timeouts(self):
+        current_time = time.time()
+        for device_id, last_seen in list(self.device_last_seen.items()):
+            if current_time - last_seen > self.device_timeout:
+                self.remove_device(device_id)
+
+    def remove_device(self, device_id: str):
+        if device_id in self.active_devices:
+            self.active_devices.remove(device_id)
+            self.ping_sequence = deque(d for d in self.ping_sequence if d != device_id)
+            self.device_lost.emit(device_id)
+            print(f"Device lost: {device_id}")
+
+    def parse_sensor_data(self, payload: str) -> Dict[str, Any]:
+        parts = payload.split(',')
+        if len(parts) != 11:
+            raise ValueError("Invalid data format - expected 11 comma-separated values")
+            
+        return {
+            'timestamp': int(parts[0]),
+            'acc_X': float(parts[1]),
+            'acc_Y': float(parts[2]),
+            'acc_Z': float(parts[3]),
+            'w': float(parts[4]),
+            'x': float(parts[5]),
+            'y': float(parts[6]),
+            'z': float(parts[7]),
+            'gyro_X': float(parts[8]),
+            'gyro_Y': float(parts[9]),
+            'gyro_Z': float(parts[10])
+        }
 
 class MQTTDataLogger(QMainWindow):
     def __init__(self):
@@ -72,37 +143,20 @@ class MQTTDataLogger(QMainWindow):
         self.setWindowTitle("MPU6050 Data Logger")
         self.setGeometry(100, 100, 1000, 800)
         
-        # MQTT Configuration
         self.broker = '192.168.1.2'
         self.port = 1883
-        self.topic_pattern = "sensor/+"
-        
-        # Data storage
+        self.sampling_rate = 50
         self.recording = False
         self.recording_start_time = 0
-        self.data: Dict[str, List[Dict]] = defaultdict(list)
-        self.connected_sensors: Set[str] = set()
-        self.current_sensor: Optional[str] = None
-        self.sampling_rate = 50
-        self.last_recorded_time: Dict[str, int] = {}
-        self.last_values: Dict[str, Dict] = {}  # Store last values for each sensor
+        self.recording_stop_time = 0
+        self.data = defaultdict(list)
+        self.data_lock = threading.Lock()  # Add this for thread safety
+        self.actual_data_points = 0  # Add this counter
         
-        # Initialize UI
         self.init_ui()
-        
-        # Setup MQTT communicator
-        self.mqtt_communicator = MQTTCommunicator(self.broker, self.port, self.topic_pattern)
-        self.mqtt_communicator.message_received.connect(self.handle_mqtt_message)
-        self.mqtt_communicator.connection_status.connect(self.update_connection_status)
-        self.mqtt_communicator.start()
-        
-        # Timer for updating the UI
-        self.timer = QTimer()
-        self.timer.timeout.connect(self.update_ui)
-        self.timer.start(100)  # Update UI every 100ms
-        
-    def init_ui(self) -> None:
-        """Initialize the user interface"""
+        self.setup_mqtt()
+
+    def init_ui(self):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
@@ -111,16 +165,16 @@ class MQTTDataLogger(QMainWindow):
         status_group = QGroupBox("Status")
         status_layout = QVBoxLayout()
         
-        self.connection_status = QLabel("Connecting to MQTT broker...")
-        self.recording_status = QLabel("Recording: OFF")
-        self.sensors_connected = QLabel("Connected Sensors: None")
-        self.recording_duration = QLabel("Duration: 0.00s")
+        self.connection_status_label = QLabel("Connecting to MQTT broker...")
+        self.recording_status_label = QLabel("Recording: OFF")
+        self.sensors_connected_label = QLabel("Connected Sensors: 0")
+        self.recording_duration_label = QLabel("Duration: 0.00s")
         self.data_points_label = QLabel("Data Points: 0")
         
-        status_layout.addWidget(self.connection_status)
-        status_layout.addWidget(self.recording_status)
-        status_layout.addWidget(self.sensors_connected)
-        status_layout.addWidget(self.recording_duration)
+        status_layout.addWidget(self.connection_status_label)
+        status_layout.addWidget(self.recording_status_label)
+        status_layout.addWidget(self.sensors_connected_label)
+        status_layout.addWidget(self.recording_duration_label)
         status_layout.addWidget(self.data_points_label)
         status_group.setLayout(status_layout)
         
@@ -128,23 +182,12 @@ class MQTTDataLogger(QMainWindow):
         control_group = QGroupBox("Controls")
         control_layout = QHBoxLayout()
         
-        # Sampling rate control
-        sampling_layout = QHBoxLayout()
-        sampling_layout.addWidget(QLabel("Sampling Rate (Hz):"))
-        self.sampling_rate_spin = QSpinBox()
-        self.sampling_rate_spin.setRange(1, 200)
-        self.sampling_rate_spin.setValue(50)
-        self.sampling_rate_spin.valueChanged.connect(self.set_sampling_rate)
-        sampling_layout.addWidget(self.sampling_rate_spin)
-        
-        # Recording controls
         self.start_button = QPushButton("Start Recording (Space)")
-        self.start_button.clicked.connect(self.toggle_recording)
+        self.start_button.clicked.connect(self.start_recording)
         self.stop_button = QPushButton("Stop Recording (Space)")
-        self.stop_button.clicked.connect(self.toggle_recording)
+        self.stop_button.clicked.connect(self.stop_recording)
         self.stop_button.setEnabled(False)
         
-        control_layout.addLayout(sampling_layout)
         control_layout.addWidget(self.start_button)
         control_layout.addWidget(self.stop_button)
         control_group.setLayout(control_layout)
@@ -153,218 +196,308 @@ class MQTTDataLogger(QMainWindow):
         sensor_group = QGroupBox("Sensor Monitoring")
         sensor_layout = QVBoxLayout()
         
-        self.sensor_selector = QComboBox()
-        self.sensor_selector.currentIndexChanged.connect(self.change_monitored_sensor)
+        self.device_list = QComboBox()
+        self.device_list.currentIndexChanged.connect(self.device_selected)
         sensor_layout.addWidget(QLabel("Select Sensor to Monitor:"))
-        sensor_layout.addWidget(self.sensor_selector)
+        sensor_layout.addWidget(self.device_list)
         
         self.sensor_display = QTextEdit()
         self.sensor_display.setReadOnly(True)
-        self.sensor_display.setFontFamily("Courier New")  # Monospace font for better alignment
+        self.sensor_display.setFontFamily("Courier New")
         sensor_layout.addWidget(self.sensor_display)
         
         sensor_group.setLayout(sensor_layout)
         
-        # Add groups to main layout
         main_layout.addWidget(status_group)
         main_layout.addWidget(control_group)
         main_layout.addWidget(sensor_group)
         
-    def set_sampling_rate(self, rate: int) -> None:
-        """Set the target sampling rate in Hz"""
-        self.sampling_rate = rate
+        # Setup timers in main thread
+        self.ui_timer = QTimer(self)
+        self.ui_timer.timeout.connect(self.update_ui)
+        self.ui_timer.start(100)  # 10 Hz UI update
         
-    def keyPressEvent(self, event) -> None:
-        """Handle keyboard events"""
-        if event.key() == Qt.Key_Space:
-            self.toggle_recording()
-        super().keyPressEvent(event)
-            
-    def update_connection_status(self, status: str) -> None:
-        """Update the connection status display"""
-        self.connection_status.setText(status)
-            
-    def handle_mqtt_message(self, sensor_id: str, payload: Dict) -> None:
-        """Handle incoming MQTT messages"""
-        self.connected_sensors.add(sensor_id)
+        self.monitor_timer = QTimer(self)
+        self.monitor_timer.timeout.connect(self.check_device_timeouts)
+        self.monitor_timer.start(1000)  # Check every second
+
+    def setup_mqtt(self):
+        self.mqtt_thread = QThread()
+        self.mqtt_worker = MQTTWorker(self.broker, self.port, self.sampling_rate)
+        self.mqtt_worker.moveToThread(self.mqtt_thread)
         
-        # Store the latest values for this sensor
-        self.last_values[sensor_id] = payload
+        # Connect signals
+        # Modify the signal connection to be queued
+        self.mqtt_worker.message_received.connect(
+            self.handle_sensor_data, 
+            Qt.QueuedConnection
+        )
+        self.mqtt_worker.device_discovered.connect(self.device_discovered)
+        self.mqtt_worker.device_lost.connect(self.device_lost)
+        self.mqtt_worker.connection_status.connect(self.update_connection_status)
         
+        # Calculate initial ping interval (will update as devices connect)
+        self.ping_interval = 1000 / self.sampling_rate  # Start with single device rate
+        self.ping_timer = QTimer(self)
+        self.ping_timer.timeout.connect(self.send_pings)
+        self.update_ping_timer()
+        
+        # Start the thread
+        self.mqtt_thread.started.connect(self.mqtt_worker.start)
+        self.mqtt_thread.start()
+
+    def update_ping_timer(self):
+        if hasattr(self, 'mqtt_worker'):
+            # Get recommended interval from worker
+            interval = self.mqtt_worker.update_ping_timer()
+            if interval:
+                if self.ping_timer.isActive():
+                    self.ping_timer.stop()
+                self.ping_timer.start(int(interval))
+                print(f"Updated ping interval: {interval}ms")
+
+    def update_connection_status(self, status):
+        self.connection_status_label.setText(status)
+
+    def device_discovered(self, device_id):
+        self.device_list.addItem(device_id)
+        if self.device_list.count() == 1:
+            self.device_list.setCurrentIndex(0)
+        self.update_device_count()
+        self.update_ping_timer()
+
+    def device_lost(self, device_id):
+        index = self.device_list.findText(device_id)
+        if index >= 0:
+            self.device_list.removeItem(index)
+        self.update_device_count()
+        self.update_ping_timer()
+
+    def update_device_count(self):
+        self.sensors_connected_label.setText(f"Connected Sensors: {self.device_list.count()}")
+
+    def device_selected(self, index):
+        if index >= 0:
+            device_id = self.device_list.itemText(index)
+            if device_id in self.mqtt_worker.last_values:
+                self.update_device_display(self.mqtt_worker.last_values[device_id])
+
+    def update_device_display(self, data):
+        display_text = f"Sensor {data['device_id']} Data:\n\n"
+        display_text += f"{'Timestamp':>12}: {data['timestamp']}\n"
+        display_text += f"{'Acc X':>12}: {data['acc_X']:.2f}\n"
+        display_text += f"{'Acc Y':>12}: {data['acc_Y']:.2f}\n"
+        display_text += f"{'Acc Z':>12}: {data['acc_Z']:.2f}\n"
+        display_text += f"{'Quat W':>12}: {data['w']:.4f}\n"
+        display_text += f"{'Quat X':>12}: {data['x']:.4f}\n"
+        display_text += f"{'Quat Y':>12}: {data['y']:.4f}\n"
+        display_text += f"{'Quat Z':>12}: {data['z']:.4f}\n"
+        display_text += f"{'Gyro X':>12}: {data['gyro_X']:.2f}\n"
+        display_text += f"{'Gyro Y':>12}: {data['gyro_Y']:.2f}\n"
+        display_text += f"{'Gyro Z':>12}: {data['gyro_Z']:.2f}\n"
+        self.sensor_display.setPlainText(display_text)
+
+    def handle_sensor_data(self, device_id, data):
+        # Always update display
+        if device_id == self.device_list.currentText():
+            self.update_device_display(data)
+        
+        # Store data if recording - with thread safety
         if self.recording:
-            timestamp = int(payload['timestamp'])
-            
-            # Initialize if first time seeing this sensor
-            if sensor_id not in self.last_recorded_time:
-                self.last_recorded_time[sensor_id] = timestamp
-                self.data[sensor_id].append(payload)
-                return
-            
-            # Calculate time since last recorded sample
-            time_since_last = timestamp - self.last_recorded_time[sensor_id]
-            target_interval = 1000 / self.sampling_rate  # ms between samples
-            
-            # If enough time has passed, record the current values
-            if time_since_last >= target_interval:
-                self.data[sensor_id].append(payload)
-                self.last_recorded_time[sensor_id] = timestamp
-            
-        # Always update display with latest values
-        if sensor_id == self.current_sensor:
-            self.update_sensor_display(payload)
-            
-    def toggle_recording(self) -> None:
-        """Toggle recording state"""
+            try:
+                with self.data_lock:
+                    record_data = data.copy()
+                    record_data['server_time'] = time.time() * 1000
+                    self.data[device_id].append(record_data)
+                    self.actual_data_points += 1
+                print(f"Stored data for {device_id}, total points: {self.actual_data_points}")  # Debug
+            except Exception as e:
+                print(f"Error recording data: {e}")
+
+        print(f"Received data from {device_id} - Recording: {self.recording}")  # Debug
+
+    def start_recording(self):
         if not self.recording:
-            # Start recording
-            self.start_recording()
-        else:
-            # Stop recording
-            self.stop_recording()
-            
-    def start_recording(self) -> None:
-        """Start a new recording session"""
-        self.recording = True
-        self.data = defaultdict(list)
-        self.last_recorded_time = {}
-        self.recording_start_time = int(time.time() * 1000)
-        self.recording_status.setText("Recording: ON")
-        self.start_button.setEnabled(False)
-        self.stop_button.setEnabled(True)
-        
-        # Initialize with any values we already have
-        for sensor_id, payload in self.last_values.items():
-            self.data[sensor_id].append(payload)
-            self.last_recorded_time[sensor_id] = int(payload['timestamp'])
-            
-    def stop_recording(self) -> None:
-        """Stop the current recording session"""
-        self.recording = False
-        self.recording_status.setText("Recording: OFF")
-        self.start_button.setEnabled(True)
-        self.stop_button.setEnabled(False)
-        
-        if not self.data:
+            with self.data_lock:
+                self.recording = True
+                self.recording_start_time = time.time()
+                self.data = defaultdict(list)
+                self.actual_data_points = 0
+            self.recording_status_label.setText("Recording: ON")
+            self.start_button.setEnabled(False)
+            self.stop_button.setEnabled(True)
+            print("Recording STARTED - ready to receive data")
+            print(f"Recording state: {self.recording}")  # Debug
+
+    def stop_recording(self):
+        if self.recording:
+            with self.data_lock:
+                self.recording = False
+                self.recording_stop_time = time.time()
+                if self.recording_stop_time < self.recording_start_time:
+                    print("Warning: Stop time before start time, resetting")
+                    self.recording_stop_time = self.recording_start_time + 1
+                print(f"Stop time set: {self.recording_stop_time}")  # Debug
+            self.recording_status_label.setText("Recording: OFF")
+            self.start_button.setEnabled(True)
+            self.stop_button.setEnabled(False)
+            print(f"Recording STOPPED - collected {self.actual_data_points} points")
+            self.save_data()
+
+    def save_data(self):
+        if not any(len(data) > 0 for data in self.data.values()):
             QMessageBox.information(self, "No Data", "No data was recorded during this session.")
             return
             
-        self.save_data()
+        # Debug print to verify data
+        for device_id, device_data in self.data.items():
+            print(f"Device {device_id} has {len(device_data)} data points")
             
-    def save_data(self) -> None:
-        """Save the recorded data to a file"""
         folder = QFileDialog.getExistingDirectory(self, "Select Folder to Save Data")
         if not folder:
             return
             
         try:
             combined_df = self.combine_sensor_data()
-            
-            if combined_df is not None and not combined_df.empty:
-                timestamp = QDateTime.currentDateTime().toString("yyyyMMdd_hhmmss")
-                filename = f"{folder}/mpu6050_data_{timestamp}.xlsx"
-                combined_df.to_excel(filename, index=False)
-                QMessageBox.information(self, "Success", f"Data successfully saved to:\n{filename}")
-            else:
-                QMessageBox.warning(self, "No Data", "No valid data to save.")
+            print("Combined DataFrame shape:", combined_df.shape)  # Debug print
+            if combined_df.empty:
+                print("Warning: Combined DataFrame is empty")
+                QMessageBox.warning(self, "No Data", "The combined DataFrame is empty. No file saved.")
+                return
+            timestamp = QDateTime.currentDateTime().toString("yyyyMMdd_hhmmss")
+            filename = f"{folder}/mpu6050_data_{timestamp}.xlsx"
+            print(f"Saving to: {filename}")  # Debug
+            combined_df.to_excel(filename, index=False)
+            print(f"File saved successfully")  # Debug
+            QMessageBox.information(self, "Success", f"Data successfully saved to:\n{filename}")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to save data: {str(e)}")
-            
-    def combine_sensor_data(self) -> Optional[pd.DataFrame]:
-        """Combine data from all sensors into a single DataFrame"""
+            print("Error during save:", e)  # Debug print
+
+    def combine_sensor_data(self):
         if not self.data:
-            return None
-            
-        # Create a list of all timestamps from all sensors
-        all_timestamps = set()
-        for sensor_data in self.data.values():
-            for point in sensor_data:
-                all_timestamps.add(point['timestamp'])
-        all_timestamps = sorted(all_timestamps)
+            print("No data in self.data")  # Debug
+            return pd.DataFrame()
         
-        # Create a DataFrame with all timestamps
-        df = pd.DataFrame({'timestamp': all_timestamps})
+        # Calculate recording duration in milliseconds
+        duration_ms = (self.recording_stop_time - self.recording_start_time) * 1000
+        num_samples = int(duration_ms * self.sampling_rate / 1000)
+        print(f"Duration: {duration_ms}ms, Samples: {num_samples}")  # Debug
         
-        # Normalize timestamps to start from 0
-        if len(all_timestamps) > 0:
-            df['time_s'] = (df['timestamp'] - self.recording_start_time) / 1000.0
+        # Create regular time intervals based on sampling rate
+        base_time = self.recording_start_time * 1000  # Convert to milliseconds
+        time_step = 1000 / self.sampling_rate
+        time_points = [base_time + i * time_step for i in range(num_samples)]
         
-        # Add data from each sensor
-        for sensor_id, sensor_data in self.data.items():
-            if not sensor_data:
+        # Create the base DataFrame - ensure unique index
+        df = pd.DataFrame({
+            'timestamp': time_points,
+            'time_s': [(t - base_time)/1000.0 for t in time_points]
+        }).set_index('timestamp')
+        print(f"Base DataFrame shape: {df.shape}")  # Debug
+        
+        # Process each device's data
+        for device_id, device_data in self.data.items():
+            if not device_data:
+                print(f"No data for device {device_id}")  # Debug
                 continue
                 
-            # Create a temporary DataFrame for this sensor
-            sensor_df = pd.DataFrame(sensor_data)
+            # Create DataFrame from device data
+            device_df = pd.DataFrame(device_data)
+            print(f"Device {device_id} DataFrame shape: {device_df.shape}")  # Debug
+            print(f"Device {device_id} server_time range: {device_df['server_time'].min()} to {device_df['server_time'].max()}")  # Debug
             
-            # Rename columns to include sensor ID
-            column_mapping = {
-                'acc_X': f'ax_{sensor_id}',
-                'acc_Y': f'ay_{sensor_id}',
-                'acc_Z': f'az_{sensor_id}',
-                'gyro_X': f'gx_{sensor_id}',
-                'gyro_Y': f'gy_{sensor_id}',
-                'gyro_Z': f'gz_{sensor_id}',
-                'w': f'w_{sensor_id}',
-                'i': f'i_{sensor_id}',
-                'j': f'j_{sensor_id}',
-                'k': f'k_{sensor_id}'
-            }
-            sensor_df = sensor_df.rename(columns=column_mapping)
+            # Ensure we have unique timestamps by adding small increments to duplicates
+            device_df['server_time'] = self.make_timestamps_unique(device_df['server_time'])
+            
+            # Snap server_time to nearest time_point to preserve new values
+            def snap_to_nearest_timepoint(t):
+                # Find the nearest time point in time_points
+                idx = np.argmin(np.abs(np.array(time_points) - t))
+                return time_points[idx]
+            
+            device_df['server_time'] = device_df['server_time'].apply(snap_to_nearest_timepoint)
+            print(f"Device {device_id} after snapping timestamps: {device_df['server_time'].head().tolist()}")  # Debug
+            
+            # Set server_time as index for alignment
+            device_df.set_index('server_time', inplace=True)
+            
+            # Aggregate duplicate timestamps by taking the most recent value (last)
+            device_df = device_df.groupby(device_df.index).last()
+            print(f"Device {device_id} after deduplication shape: {device_df.shape}")  # Debug
+            
+            # Reindex to our regular time points
+            temp_df = pd.DataFrame(index=time_points)
+            device_df = temp_df.join(device_df, how='left')
+            print(f"Device {device_id} after join shape: {device_df.shape}")  # Debug
+            
+            # Forward fill to copy previous values for gaps, then backfill for leading NaNs
+            device_df = device_df.ffill().bfill()
+            print(f"Device {device_id} after fill shape: {device_df.shape}")  # Debug
+            
+            # Rename columns with device prefix
+            device_df = device_df.drop(columns=['device_id', 'timestamp'], errors='ignore')
+            device_df = device_df.rename(columns={
+                'acc_X': f'acc_X_{device_id}',
+                'acc_Y': f'acc_Y_{device_id}',
+                'acc_Z': f'acc_Z_{device_id}',
+                'w': f'w_{device_id}',
+                'x': f'x_{device_id}',
+                'y': f'y_{device_id}',
+                'z': f'z_{device_id}',
+                'gyro_X': f'gyro_X_{device_id}',
+                'gyro_Y': f'gyro_Y_{device_id}',
+                'gyro_Z': f'gyro_Z_{device_id}'
+            })
             
             # Merge with main DataFrame
-            df = pd.merge(df, sensor_df[['timestamp'] + list(column_mapping.values())], 
-                         on='timestamp', how='left')
+            df = df.join(device_df, how='left')
+            print(f"Merged DataFrame shape: {df.shape}")  # Debug
         
-        # Sort by timestamp and reset index
-        df = df.sort_values('timestamp').reset_index(drop=True)
+        return df.reset_index()
+
+    def make_timestamps_unique(self, timestamps):
+        """Ensure all timestamps are unique by adding small increments to duplicates"""
+        if len(timestamps) == len(set(timestamps)):
+            return timestamps  # Already unique
         
-        return df
-                
-    def change_monitored_sensor(self, index: int) -> None:
-        """Change which sensor is being monitored in the display"""
-        if 0 <= index < self.sensor_selector.count():
-            self.current_sensor = self.sensor_selector.itemText(index)
-            if self.current_sensor in self.last_values:
-                self.update_sensor_display(self.last_values[self.current_sensor])
-            else:
-                self.sensor_display.setText(f"Waiting for data from sensor {self.current_sensor}...")
-            
-    def update_sensor_display(self, data: Dict) -> None:
-        """Update the sensor display with new data"""
-        display_text = f"Sensor {self.current_sensor} Data:\n\n"
-        for key, value in data.items():
-            display_text += f"{key:>10}: {value}\n"
-        self.sensor_display.setPlainText(display_text)
+        # Create a Series to track duplicates
+        ts_series = pd.Series(timestamps)
         
-    def update_ui(self) -> None:
-        """Update the user interface"""
-        # Update connected sensors list
-        if self.connected_sensors:
-            self.sensors_connected.setText(f"Connected Sensors: {', '.join(sorted(self.connected_sensors))}")
-            
-            current_items = {self.sensor_selector.itemText(i) for i in range(self.sensor_selector.count())}
-            new_sensors = sorted(self.connected_sensors - current_items)
-            
-            for sensor in new_sensors:
-                self.sensor_selector.addItem(sensor)
-                
-            if not self.current_sensor and self.sensor_selector.count() > 0:
-                self.current_sensor = self.sensor_selector.itemText(0)
-        else:
-            self.sensors_connected.setText("Connected Sensors: None")
-            
-        # Update recording duration
+        # Find duplicates and add small increments
+        duplicates = ts_series.duplicated(keep=False)
+        if duplicates.any():
+            # Group by timestamp and add incrementing microseconds to duplicates
+            groups = ts_series.groupby(ts_series).cumcount()
+            increment = groups * 0.001  # Add 1ms to each duplicate
+            ts_series = ts_series + increment
+        
+        return ts_series.values
+
+    def update_ui(self):
         if self.recording:
-            duration = (time.time() * 1000 - self.recording_start_time) / 1000.0
-            self.recording_duration.setText(f"Duration: {duration:.2f}s")
-            
-            # Update data points count
-            total_points = sum(len(data) for data in self.data.values())
-            self.data_points_label.setText(f"Data Points: {total_points}")
-            
-    def closeEvent(self, event) -> None:
-        """Handle window close event"""
-        self.mqtt_communicator.stop()
+            duration = time.time() - self.recording_start_time
+            self.recording_duration_label.setText(f"Duration: {duration:.2f}s")
+            self.data_points_label.setText(f"Data Points: {self.actual_data_points}")
+
+    def send_pings(self):
+        if hasattr(self, 'mqtt_worker'):
+            self.mqtt_worker.send_next_ping()
+
+    def check_device_timeouts(self):
+        if hasattr(self, 'mqtt_worker'):
+            self.mqtt_worker.check_device_timeouts()
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Space:
+            if self.recording:
+                self.stop_recording()
+            else:
+                self.start_recording()
+            print(f"Spacebar pressed, recording: {self.recording}")  # Debug
+        super().keyPressEvent(event)
+
+    def closeEvent(self, event):
         if self.recording:
             reply = QMessageBox.question(
                 self, 'Recording in Progress',
@@ -381,6 +514,11 @@ class MQTTDataLogger(QMainWindow):
                 event.ignore()
         else:
             event.accept()
+        
+        # Clean up threads
+        if hasattr(self, 'mqtt_thread'):
+            self.mqtt_thread.quit()
+            self.mqtt_thread.wait()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
