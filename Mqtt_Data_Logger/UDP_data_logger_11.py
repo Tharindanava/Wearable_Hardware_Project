@@ -202,7 +202,7 @@ class UDPDataLogger(QMainWindow):
         self.setGeometry(100, 100, 1000, 800)
         
         self.port = 12345  # Must match ESP32 code
-        self.sampling_rate = 100  # Hz
+        self.sampling_rate = 50  # Hz
         self.recording = False
         self.recording_start_time = 0
         self.recording_stop_time = 0
