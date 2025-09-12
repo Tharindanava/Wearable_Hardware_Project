@@ -9,6 +9,7 @@ from PyQt5.QtCore import QTimer, Qt, pyqtSignal, QObject, QThread, QDateTime
 from collections import defaultdict
 import threading
 import subprocess
+import select
 
 class UDPWorker(QObject):
     message_received = pyqtSignal(str, dict)  # device_id, data
@@ -17,41 +18,58 @@ class UDPWorker(QObject):
     connection_status = pyqtSignal(str)
     wifi_status_updated = pyqtSignal(str, bool)
     
-    def __init__(self, port: int, sampling_rate: int):
+    def __init__(self, base_port: int, num_devices: int, sampling_rate: int):
         super().__init__()
-        self.port = port
+        self.base_port = base_port
+        self.num_devices = num_devices
         self.sampling_rate = sampling_rate
         self.active_devices = set()
         self.last_values = {}
-        self.device_last_seen = {}  # Stores last timestamp from sensor data (in ms)
-        self.device_timeout = 0.5  # seconds
-        self.wifi_status = {}  # device_id: bool (True if connected to WiFi)
+        self.device_last_seen = {}
+        self.device_timeout = 0.5
+        self.wifi_status = {}
         self.wifi_check_timer = QTimer()
         self.wifi_check_timer.timeout.connect(self.check_wifi_connections)
-        self.wifi_check_timer.start(1000)  # Check WiFi every 5s
+        self.wifi_check_timer.start(1000)
         self.running = True
-        self.sock = None
+        self.sockets = {}
+        self.port_to_device = {}
 
     def start(self):
         try:
-            self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            self.sock.bind(('0.0.0.0', self.port))
-            self.sock.settimeout(0.1)  # Small timeout to allow checking for thread exit
-            self.connection_status.emit(f"UDP server listening on port {self.port}")
+            # Create sockets for all possible devices
+            for device_id in range(1, self.num_devices + 1):
+                port = self.base_port + device_id
+                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                sock.bind(('0.0.0.0', port))
+                sock.setblocking(False)
+                self.sockets[device_id] = sock
+                self.port_to_device[port] = str(device_id)
+            
+            self.connection_status.emit(f"UDP server listening on ports {self.base_port + 1} to {self.base_port + self.num_devices}")
             
             while self.running:
                 try:
-                    data, addr = self.sock.recvfrom(1024)  # Buffer size
-                    self.process_message(data.decode('utf-8'))
-                except socket.timeout:
-                    continue
+                    # Use select to check for readable sockets
+                    readable, _, _ = select.select(list(self.sockets.values()), [], [], 0.1)
+                    
+                    for sock in readable:
+                        try:
+                            data, addr = sock.recvfrom(1024)
+                            port = sock.getsockname()[1]
+                            device_id = self.port_to_device.get(port)
+                            if device_id:
+                                self.process_message(data.decode('utf-8'), device_id)
+                        except socket.error:
+                            continue
+                            
                 except Exception as e:
                     self.connection_status.emit(f"Error receiving data: {str(e)}")
         except Exception as e:
             self.connection_status.emit(f"Failed to start UDP server: {str(e)}")
         finally:
-            if self.sock:
-                self.sock.close()
+            for sock in self.sockets.values():
+                sock.close()
 
     def stop(self):
         self.running = False
@@ -60,7 +78,6 @@ class UDPWorker(QObject):
         """Check WiFi connectivity for all known devices"""
         for device_id in list(self.active_devices) + list(self.wifi_status.keys()):
             if device_id not in self.active_devices:
-                # Only check devices that aren't currently active
                 ip_address = f"192.168.1.{100 + int(device_id)}"
                 is_connected = self.ping_device(ip_address)
                 self.wifi_status[device_id] = is_connected
@@ -69,7 +86,6 @@ class UDPWorker(QObject):
     def ping_device(self, ip_address):
         """Ping a device to check WiFi connectivity"""
         try:
-            # Use system ping command (works on both Windows and Linux)
             response = subprocess.run(
                 ['ping', '-n', '1', '-w', '1000', ip_address],
                 stdout=subprocess.PIPE,
@@ -80,33 +96,27 @@ class UDPWorker(QObject):
         except Exception:
             return False
 
-    def process_message(self, message):
+    def process_message(self, message, device_id):
         try:
             parts = message.split(',')
             
             # Handle heartbeat messages
             if len(parts) == 2 and parts[1] == "HEARTBEAT":
-                device_id = parts[0]
                 self.register_device(device_id)
                 return
                 
             # Handle sensor data messages
             if len(parts) == 8:
-                device_id = parts[0]
                 data = {
-                    'timestamp': int(parts[1]),  # Assuming timestamp is in milliseconds
+                    'timestamp': int(parts[1]),
                     'acc_X': int(parts[2]),
                     'acc_Y': int(parts[3]),
                     'acc_Z': int(parts[4]),
-                    # 'w': float(parts[5]),
-                    # 'x': float(parts[6]),
-                    # 'y': float(parts[7]),
-                    # 'z': float(parts[8]),
                     'gyro_X': int(parts[5]),
                     'gyro_Y': int(parts[6]),
                     'gyro_Z': int(parts[7]),
                     'device_id': device_id,
-                    'server_time': time.time() * 1000  # Server timestamp in ms
+                    'server_time': time.time() * 1000
                 }
                 
                 # Register device if not already registered
@@ -119,12 +129,12 @@ class UDPWorker(QObject):
                 self.last_values[device_id] = data
                 self.message_received.emit(device_id, data)
                 
-                # Update WiFi status (if we're getting data, WiFi must be connected)
+                # Update WiFi status
                 self.wifi_status[device_id] = True
                 self.wifi_status_updated.emit(device_id, True)
                 
         except (ValueError, IndexError) as e:
-            print(f"Error parsing data: {e}")
+            print(f"Error parsing data from device {device_id}: {e}")
             print(f"Raw message: {message}")
 
     def register_device(self, device_id: str):
@@ -135,7 +145,6 @@ class UDPWorker(QObject):
             self.wifi_status[device_id] = True
             self.wifi_status_updated.emit(device_id, True)
             
-            # Track when device first connected
             if not hasattr(self, 'device_connection_times'):
                 self.device_connection_times = {}
             self.device_connection_times[device_id] = time.time() * 1000
@@ -144,43 +153,34 @@ class UDPWorker(QObject):
 
     def check_device_timeouts(self):
         """Check if any devices have stopped sending data"""
-        timeout_ms = self.device_timeout * 1000  # Convert timeout to milliseconds
+        timeout_ms = self.device_timeout * 1000
         
-        # We'll need to track initial timestamps for comparison
         if not hasattr(self, 'device_initial_timestamps'):
             self.device_initial_timestamps = {}
         
-        current_time = time.time() * 1000  # Current time in milliseconds
+        current_time = time.time() * 1000
         
         for device_id, last_timestamp in list(self.device_last_seen.items()):
-            # If we don't have an initial timestamp for this device yet, set it
             if device_id not in self.device_initial_timestamps:
                 self.device_initial_timestamps[device_id] = (last_timestamp, current_time)
                 continue
                 
             initial_timestamp, check_time = self.device_initial_timestamps[device_id]
             
-            # Check if timeout period has elapsed since we set the initial timestamp
             if current_time - check_time >= timeout_ms:
-                # Compare the initial timestamp with the current last_timestamp
                 if last_timestamp == initial_timestamp:
-                    # Timestamp hasn't changed - remove the device
                     self.remove_device(device_id)
                 else:
-                    # Timestamp has changed - update the reference for next check
                     self.device_initial_timestamps[device_id] = (last_timestamp, current_time)
         
-        # Check devices that connected but never sent data
         for device_id in list(self.active_devices):
             if device_id not in self.device_last_seen:
-                # If device never sent any data, check connection time
                 if hasattr(self, 'device_connection_times'):
                     if device_id in self.device_connection_times:
                         if current_time - self.device_connection_times[device_id] > timeout_ms:
                             print(f"Device {device_id} connected but never sent data")
                             self.remove_device(device_id)
                 else:
-                    # Initialize connection times tracking
                     self.device_connection_times = {}
                     for dev in self.active_devices:
                         self.device_connection_times[dev] = current_time
@@ -198,11 +198,12 @@ class UDPWorker(QObject):
 class UDPDataLogger(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("MPU6050 Data Logger (UDP)")
+        self.setWindowTitle("MPU6050 Data Logger (Multi-port UDP)")
         self.setGeometry(100, 100, 1000, 800)
         
-        self.port = 12345  # Must match ESP32 code
-        self.sampling_rate = 100  # Hz
+        self.base_port = 12300  # Base port for device 1
+        self.num_devices = 25   # Maximum number of devices
+        self.sampling_rate = 100
         self.recording = False
         self.recording_start_time = 0
         self.recording_stop_time = 0
@@ -300,10 +301,10 @@ class UDPDataLogger(QMainWindow):
 
     def setup_udp(self):
         self.udp_thread = QThread()
-        self.udp_worker = UDPWorker(self.port, self.sampling_rate)
+        self.udp_worker = UDPWorker(self.base_port, self.num_devices, self.sampling_rate)
         self.udp_worker.moveToThread(self.udp_thread)
         
-        # Connect signals (same as MQTT version)
+        # Connect signals
         self.udp_worker.message_received.connect(self.handle_sensor_data)
         self.udp_worker.device_discovered.connect(self.device_discovered)
         self.udp_worker.device_lost.connect(self.device_lost)
@@ -509,10 +510,6 @@ class UDPDataLogger(QMainWindow):
                 'acc_X': f'acc_X_{device_id}',
                 'acc_Y': f'acc_Y_{device_id}',
                 'acc_Z': f'acc_Z_{device_id}',
-                # 'w': f'w_{device_id}',
-                # 'x': f'x_{device_id}',
-                # 'y': f'y_{device_id}',
-                # 'z': f'z_{device_id}',
                 'gyro_X': f'gyro_X_{device_id}',
                 'gyro_Y': f'gyro_Y_{device_id}',
                 'gyro_Z': f'gyro_Z_{device_id}'
