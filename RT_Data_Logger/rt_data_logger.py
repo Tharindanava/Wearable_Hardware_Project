@@ -13,6 +13,7 @@ class IMUDataLogger:
     - Track device connectivity and health status.
     - Parse and process sensor data in CSV format.
     - Provide access to buffered data and device status.
+    - Send real-time sample-by-sample data to another UDP socket.
 
     Attributes:
         devices (dict): Information about each device (IP, port, connection status, last seen).
@@ -23,6 +24,8 @@ class IMUDataLogger:
         last_received_time (dict): Timestamps of last data received per device.
         running (bool): Indicates if logging is active.
         threads (list): List of threads for device listening, health checking, and data processing.
+        realtime_socket (socket): UDP socket for sending real-time data.
+        realtime_target (tuple): Target (IP, port) for real-time data streaming.
 
     Methods:
         start_logging():
@@ -51,21 +54,11 @@ class IMUDataLogger:
             Return buffered data for a specific device.
         print_latest_data(device_id=None):
             Print the latest data from one or all devices.
-
-    Usage:
-        logger = IMUDataLogger()
-        logger.start_logging()
-        # ... interact with logger ...
-        logger.stop_logging()
-
-    Note:
-        - Device configuration constants (DEVICE_COUNT, BASE_IP, START_IP, START_PORT, BUFFER_SIZE) must be defined externally.
-        - Sensor data is expected in CSV format: device_id,timestamp,accel_x,accel_y,accel_z,gyro_x,gyro_y,gyro_z
+        set_realtime_target(ip, port):
+            Set the target for real-time data streaming.
+        send_realtime_data(parsed_data):
+            Send parsed data to the real-time UDP socket.
     """
-
-    
-
-    # class implementation ...
 
     def __init__(self):
         self.devices = {}
@@ -74,14 +67,20 @@ class IMUDataLogger:
         self.data_queues = {}
         self.health_check_interval = 1.0  # seconds
         self.last_received_time = {}
-        self.running = False# Device configuration
-
+        self.running = False
+        
+        # Device configuration
         self.DEVICE_COUNT = 25
         self.BASE_IP = '192.168.1.'
         self.START_IP = 100
         self.START_PORT = 12300
         self.SAMPLE_RATE = 100  # Hz
         self.BUFFER_DURATION = 300  # 5 minutes in seconds
+
+        # Real-time streaming configuration
+        self.realtime_socket = None
+        self.realtime_target = None
+        self.realtime_enabled = False
 
         # Calculate buffer size needed for 5 minutes at 100Hz
         BUFFER_SIZE = self.BUFFER_DURATION * self.SAMPLE_RATE
@@ -101,6 +100,29 @@ class IMUDataLogger:
             self.data_buffers[device_id] = deque(maxlen=BUFFER_SIZE)
             self.data_queues[device_id] = queue.Queue()
             self.last_received_time[device_id] = time.time()
+    
+    def set_realtime_target(self, ip, port):
+        """Set the target for real-time data streaming"""
+        try:
+            self.realtime_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self.realtime_target = (ip, port)
+            self.realtime_enabled = True
+            print(f"Real-time streaming enabled to {ip}:{port}")
+        except Exception as e:
+            print(f"Error setting up real-time socket: {e}")
+            self.realtime_enabled = False
+    
+    def send_realtime_data(self, parsed_data):
+        """Send parsed data to the real-time UDP socket"""
+        if not self.realtime_enabled or not self.realtime_socket:
+            return
+        
+        try:
+            # Convert parsed data back to CSV format for transmission
+            data_str = f"{parsed_data['device_id']},{parsed_data['timestamp']},{parsed_data['ax']},{parsed_data['ay']},{parsed_data['az']},{parsed_data['gx']},{parsed_data['gy']},{parsed_data['gz']}"
+            self.realtime_socket.sendto(data_str.encode('utf-8'), self.realtime_target)
+        except Exception as e:
+            print(f"Error sending real-time data: {e}")
     
     def start_logging(self):
         self.running = True
@@ -133,6 +155,11 @@ class IMUDataLogger:
         for thread in self.threads:
             if thread.is_alive():
                 thread.join(timeout=1.0)
+        
+        # Close real-time socket if it exists
+        if self.realtime_socket:
+            self.realtime_socket.close()
+            
         print("Stopped logging")
     
     def _listen_to_device(self, device_id):
@@ -196,6 +223,10 @@ class IMUDataLogger:
                                 
                                 if parsed_data:
                                     self.data_buffers[device_id].append(parsed_data)
+                                    
+                                    # Send real-time data if enabled
+                                    if self.realtime_enabled:
+                                        self.send_realtime_data(parsed_data)
                                     
                                     # Mark device as active
                                     self.active_devices.add(device_id)
@@ -280,5 +311,3 @@ class IMUDataLogger:
                 if self.data_buffers[dev_id]:
                     latest = self.data_buffers[dev_id][-1]
                     print(f"Device {dev_id}: {latest}")
-
-
