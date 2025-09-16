@@ -78,9 +78,9 @@ class IMUDataLogger:
         self.BUFFER_DURATION = 300  # 5 minutes in seconds
 
         # Real-time streaming configuration
-        self.realtime_socket = None
-        self.realtime_target = None
-        self.realtime_enabled = False
+        self.realtime_socket = 12345
+        self.realtime_target = '192.168.1.2'
+        self.realtime_enabled = True
 
         # Calculate buffer size needed for 5 minutes at 100Hz
         BUFFER_SIZE = self.BUFFER_DURATION * self.SAMPLE_RATE
