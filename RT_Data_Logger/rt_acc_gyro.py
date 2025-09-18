@@ -43,6 +43,7 @@ def main():
                 
     except KeyboardInterrupt:
         print("\nShutting down...")
+        
     finally:
         logger.stop_logging()
         
