@@ -38,9 +38,11 @@ def main():
                     buffer_size = status['buffer_size']
                     data_rate = status['data_rate']
                     print(f"Device {device_id}: {buffer_size} samples, {data_rate:.1f} Hz")
+                #endif
+            #endfor
             
             print("---")
-                
+        
     except KeyboardInterrupt:
         print("\nShutting down...")
         
