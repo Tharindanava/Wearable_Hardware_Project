@@ -71,7 +71,7 @@ class IMUDataLogger:
         
         # Device configuration
         self.DEVICE_COUNT = 25
-        self.BASE_IP = '192.168.1.'
+        self.BASE_IP = '192.168.110.'
         self.START_IP = 100
         self.START_PORT = 12300
         self.SAMPLE_RATE = 100  # Hz
@@ -79,7 +79,7 @@ class IMUDataLogger:
 
         # Real-time streaming configuration
         self.realtime_socket = 12345
-        self.realtime_target = '192.168.1.2'
+        self.realtime_target = '192.168.110.2'
         self.realtime_enabled = True
 
         # Calculate buffer size needed for 5 minutes at 100Hz

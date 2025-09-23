@@ -13,7 +13,7 @@ Usage: Configure the target IP and port for real-time and bulk data transfer as 
 
 def main():
     logger = rtdl.IMUDataLogger()
-    logger.set_realtime_target('192.168.1.2', 12345)  # Set target for real-time data
+    logger.set_realtime_target('192.168.110.2', 12345)  # Set target for real-time data
     
     try:
         logger.start_logging()
